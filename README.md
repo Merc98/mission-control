@@ -19,6 +19,10 @@ python mission_control.py termux pair
 python mission_control.py mcp load
 python mission_control.py config
 python mission_control.py debug
+python mission_control.py catalog list --kind skill
+python mission_control.py catalog install autoagent --target global
+python mission_control.py component list --kind agent
+python mission_control.py agent config-set --agent-id autoagent --key mode --value autonomous
 ```
 
 ## Estructura
@@ -39,6 +43,7 @@ Al ejecutar `config` o `start`, se inicializa `~/.agentforge/config.toml` (o `$A
 - ✅ Team Builder (creación de equipos en SQLite)
 - 🟡 Termux Bridge (pairing checklist inicial)
 - ✅ MCP Loader (lee `mcp_sources` desde TOML)
+- ✅ Catálogo unificado (Agent vs Skill vs Plugin vs MCP, con instalación y scope)
 - ⏳ Social Bridge / Cloud & Containers / CyberStrike (pendiente)
 
 ## Notas
@@ -54,3 +59,18 @@ python mission_control.py debug
 ```
 
 El comando revisa carpetas bridge, SQLite, config TOML, discovery de endpoints locales y presencia de CLIs, y luego devuelve recomendaciones accionables.
+
+## Diferenciación clara: Skill vs Plugin vs MCP vs Agent
+
+- **Agent**: runtime/autómata completo (ejecuta tareas end-to-end).
+- **Skill**: conocimiento/flujo reutilizable (prompting/procedimiento).
+- **Plugin**: herramienta extensible ejecutable (scripts/integraciones).
+- **MCP**: servidor/contexto externo conectable para capacidades y datos.
+
+La app ahora incorpora:
+- `catalog list` para búsqueda filtrada por tipo/categoría/texto.
+- `catalog install` para instalación automática por catálogo con scope:
+  - global
+  - por agente (`agent:<id>`)
+- `component list` para ver qué quedó instalado y en qué scope.
+- `agent config-set` para configurar cada agente desde raíz (también invocable por LLM/chat vía CLI).

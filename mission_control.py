@@ -21,6 +21,7 @@ DEFAULT_BRIDGE = Path(os.environ.get('CLI_BRIDGE_HOME', str(APP_HOME / 'bridge')
 DEFAULT_DB = APP_HOME / 'mission_control.db'
 DEFAULT_CONFIG = APP_HOME / 'config.toml'
 WEB_ROOT = Path(__file__).parent / 'web'
+CATALOG_PATH = Path(__file__).parent / 'data' / 'agent_catalog.json'
 
 AGENTS = {
     'codex': ['codex'],
@@ -58,6 +59,33 @@ def ensure_db(db_path: Path):
             mission_id TEXT,
             members_json TEXT NOT NULL,
             created_ts INTEGER NOT NULL
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS components (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            name TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            source TEXT NOT NULL,
+            target_scope TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            install_path TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_ts INTEGER NOT NULL
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_configs (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            updated_ts INTEGER NOT NULL
         )
         """
     )
@@ -235,6 +263,132 @@ def load_mcp_sources(config_path: Path):
     return normalized
 
 
+def load_catalog(catalog_path: Path = CATALOG_PATH):
+    if not catalog_path.exists():
+        return []
+    return json.loads(catalog_path.read_text(encoding='utf-8'))
+
+
+def find_catalog_entry(entry_id: str):
+    for entry in load_catalog():
+        if entry.get('id') == entry_id:
+            return entry
+    return None
+
+
+def install_catalog_entry(entry: dict, install_root: Path, target_scope: str, target_id: str):
+    install_root.mkdir(parents=True, exist_ok=True)
+    entry_id = entry['id']
+    kind = entry.get('kind', 'agent')
+    source_type = entry.get('source_type', 'builtin')
+    source = entry.get('source', '')
+    install_path = install_root / entry_id
+    status = 'installed'
+
+    if source_type == 'github':
+        if install_path.exists():
+            status = 'already_present'
+        else:
+            rc = subprocess.run(
+                ['git', 'clone', '--depth', '1', source, str(install_path)],
+                check=False,
+            ).returncode
+            if rc != 0:
+                status = f'clone_failed_rc_{rc}'
+    else:
+        install_path.mkdir(parents=True, exist_ok=True)
+        manifest = install_path / 'manifest.json'
+        manifest.write_text(json.dumps(entry, indent=2), encoding='utf-8')
+
+    return {
+        'id': entry_id,
+        'kind': kind,
+        'name': entry.get('name', entry_id),
+        'source_type': source_type,
+        'source': source,
+        'target_scope': target_scope,
+        'target_id': target_id,
+        'install_path': str(install_path),
+        'status': status,
+    }
+
+
+def record_component_install(db_path: Path, installed: dict):
+    conn = ensure_db(db_path)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO components
+        (id, kind, name, source_type, source, target_scope, target_id, install_path, status, created_ts)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            installed['id'],
+            installed['kind'],
+            installed['name'],
+            installed['source_type'],
+            installed['source'],
+            installed['target_scope'],
+            installed['target_id'],
+            installed['install_path'],
+            installed['status'],
+            int(time.time()),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_components(db_path: Path, kind_filter: str | None = None):
+    conn = ensure_db(db_path)
+    cur = conn.cursor()
+    if kind_filter:
+        rows = cur.execute(
+            'SELECT id, kind, name, source, target_scope, target_id, install_path, status FROM components WHERE kind = ? ORDER BY id',
+            (kind_filter,),
+        ).fetchall()
+    else:
+        rows = cur.execute(
+            'SELECT id, kind, name, source, target_scope, target_id, install_path, status FROM components ORDER BY kind, id'
+        ).fetchall()
+    conn.close()
+    return [
+        {
+            'id': r[0],
+            'kind': r[1],
+            'name': r[2],
+            'source': r[3],
+            'target_scope': r[4],
+            'target_id': r[5],
+            'install_path': r[6],
+            'status': r[7],
+        }
+        for r in rows
+    ]
+
+
+def set_agent_config(db_path: Path, agent_id: str, key: str, value: str):
+    conn = ensure_db(db_path)
+    row_id = str(uuid.uuid4())
+    conn.execute(
+        """
+        INSERT INTO agent_configs (id, agent_id, key, value, updated_ts)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (row_id, agent_id, key, value, int(time.time())),
+    )
+    conn.commit()
+    conn.close()
+    return {'id': row_id, 'agent_id': agent_id, 'key': key, 'value': value}
+
+
+def parse_target(target: str):
+    if target == 'global':
+        return 'global', 'global'
+    if target.startswith('agent:'):
+        return 'agent', target.split(':', 1)[1]
+    raise ValueError("target must be 'global' or 'agent:<agent_id>'")
+
+
 def run_debug_checks(bridge: Path, db: Path, config: Path):
     checks = []
 
@@ -262,6 +416,7 @@ def run_debug_checks(bridge: Path, db: Path, config: Path):
 
     cli = detect_cli_agents()
     checks.append({'check': 'cli_agents', 'ok': True, 'details': cli})
+    checks.append({'check': 'catalog_items', 'ok': True, 'count': len(load_catalog())})
 
     recommendations = []
     if not any(v.get('installed') for v in cli.values()):
@@ -270,6 +425,7 @@ def run_debug_checks(bridge: Path, db: Path, config: Path):
         recommendations.append('Ollama endpoint not reachable at http://127.0.0.1:11434/api/tags')
     if not model_discovery['lm_studio']['ok']:
         recommendations.append('LM Studio endpoint not reachable at http://127.0.0.1:1234/v1/models')
+    recommendations.append('Use catalog list/install to manage Skill vs Plugin vs MCP separately.')
     if not recommendations:
         recommendations.append('Core local checks passed. Next step: connect real-time WS + whiteboard persistence.')
 
@@ -328,6 +484,29 @@ def main():
 
     p_cancel = sub.add_parser('cancel', help='Cancel operations')
     p_cancel.add_argument('--target', default='')
+
+    p_catalog = sub.add_parser('catalog', help='Browse/install catalog entries (agents/skills/plugins/mcp)')
+    catalog_sub = p_catalog.add_subparsers(dest='catalog_cmd', required=True)
+    p_catalog_list = catalog_sub.add_parser('list', help='List catalog entries')
+    p_catalog_list.add_argument('--kind', choices=['agent', 'skill', 'plugin', 'mcp'], default='')
+    p_catalog_list.add_argument('--category', default='')
+    p_catalog_list.add_argument('--q', default='')
+    p_catalog_install = catalog_sub.add_parser('install', help='Install catalog entry')
+    p_catalog_install.add_argument('entry_id')
+    p_catalog_install.add_argument('--target', default='global', help='global | agent:<agent_id>')
+    p_catalog_install.add_argument('--path', default=str(APP_HOME / 'packages'))
+
+    p_component = sub.add_parser('component', help='Installed components and boundaries')
+    component_sub = p_component.add_subparsers(dest='component_cmd', required=True)
+    p_component_list = component_sub.add_parser('list', help='List installed components')
+    p_component_list.add_argument('--kind', choices=['agent', 'skill', 'plugin', 'mcp'], default='')
+
+    p_agent = sub.add_parser('agent', help='Agent-level configuration')
+    agent_sub = p_agent.add_subparsers(dest='agent_cmd', required=True)
+    p_agent_cfg = agent_sub.add_parser('config-set', help='Set config key/value for an agent')
+    p_agent_cfg.add_argument('--agent-id', required=True)
+    p_agent_cfg.add_argument('--key', required=True)
+    p_agent_cfg.add_argument('--value', required=True)
 
     args = ap.parse_args()
     bridge = Path(args.bridge)
@@ -394,6 +573,44 @@ def main():
 
     if args.cmd == 'debug':
         print(json.dumps(run_debug_checks(bridge, db, config), indent=2))
+        return
+
+    if args.cmd == 'catalog' and args.catalog_cmd == 'list':
+        items = load_catalog()
+        if args.kind:
+            items = [x for x in items if x.get('kind') == args.kind]
+        if args.category:
+            items = [x for x in items if x.get('category') == args.category]
+        if args.q:
+            needle = args.q.lower()
+            items = [
+                x
+                for x in items
+                if needle in x.get('name', '').lower()
+                or needle in x.get('id', '').lower()
+                or any(needle in t.lower() for t in x.get('tags', []))
+            ]
+        print(json.dumps({'count': len(items), 'items': items}, indent=2))
+        return
+
+    if args.cmd == 'catalog' and args.catalog_cmd == 'install':
+        entry = find_catalog_entry(args.entry_id)
+        if not entry:
+            raise SystemExit(f'Catalog entry not found: {args.entry_id}')
+        target_scope, target_id = parse_target(args.target)
+        installed = install_catalog_entry(entry, Path(args.path), target_scope, target_id)
+        record_component_install(db, installed)
+        print(json.dumps({'installed': installed}, indent=2))
+        return
+
+    if args.cmd == 'component' and args.component_cmd == 'list':
+        kind = args.kind or None
+        print(json.dumps({'items': list_components(db, kind)}, indent=2))
+        return
+
+    if args.cmd == 'agent' and args.agent_cmd == 'config-set':
+        result = set_agent_config(db, args.agent_id, args.key, args.value)
+        print(json.dumps({'updated': result}, indent=2))
         return
 
     if args.cmd == 'status':
