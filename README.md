@@ -26,9 +26,9 @@ python .\mission_control.py cancel
 
 ## Bridge
 
-Por defecto usa:
+Por defecto usa `CLI_BRIDGE_HOME` si existe. Si no existe, usa:
 
-`C:\Users\beloc\CLI Workspace\nfc\cli-bridge`
+`~/.mission-control/cli-bridge`
 
 Puedes cambiarlo:
 

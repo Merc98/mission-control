@@ -3,7 +3,7 @@ import argparse, json, os, shutil, subprocess, time, uuid
 from pathlib import Path
 
 HOME = Path.home()
-DEFAULT_BRIDGE = Path(os.environ.get('CLI_BRIDGE_HOME', r'C:\Users\beloc\CLI Workspace\nfc\cli-bridge'))
+DEFAULT_BRIDGE = Path(os.environ.get('CLI_BRIDGE_HOME', str(HOME / '.mission-control' / 'cli-bridge')))
 
 AGENTS = {
     'codex': ['codex'],
@@ -20,7 +20,12 @@ def ensure_bridge(path: Path):
 def detect_agents():
     found = {}
     for name, bins in AGENTS.items():
-        exe = next((shutil.which(b) for b in bins if shutil.which(b)), None)
+        exe = None
+        for candidate in bins:
+            resolved = shutil.which(candidate)
+            if resolved:
+                exe = resolved
+                break
         found[name] = {'installed': bool(exe), 'bin': exe or ''}
     return found
 
@@ -82,7 +87,7 @@ def main():
     p_inst.add_argument('agent', choices=['codex', 'gemini', 'qwen', 'all'])
 
     p_dispatch = sub.add_parser('dispatch', help='Send instruction to one/all agents')
-    p_dispatch.add_argument('to', help='codex|gemini|qwen|all')
+    p_dispatch.add_argument('to', choices=['codex', 'gemini', 'qwen', 'all'], help='codex|gemini|qwen|all')
     p_dispatch.add_argument('body', help='Instruction text')
 
     sub.add_parser('status', help='Show inbox/outbox/state summary')
