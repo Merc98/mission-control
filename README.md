@@ -23,6 +23,11 @@ python mission_control.py catalog list --kind skill
 python mission_control.py catalog install autoagent --target global
 python mission_control.py component list --kind agent
 python mission_control.py agent config-set --agent-id autoagent --key mode --value autonomous
+python mission_control.py policy set --key approval_required.security --value true
+python mission_control.py policy list
+python mission_control.py approval request --action "run_security_scan" --scope "scope-001" --risk high --by operator
+python mission_control.py approval decide --id <approval_id> --decision approved --by lead --note "authorized window"
+python mission_control.py event emit --type source.received --source github --body-json '{"repo":"org/repo"}'
 ```
 
 ## Estructura
@@ -74,3 +79,16 @@ La app ahora incorpora:
   - por agente (`agent:<id>`)
 - `component list` para ver qué quedó instalado y en qué scope.
 - `agent config-set` para configurar cada agente desde raíz (también invocable por LLM/chat vía CLI).
+
+## Mejoras estratégicas aplicadas (control plane)
+
+Para alinear la app con una arquitectura de control plane multiagente:
+
+- **Event log operativo** (`event emit`) con taxonomía extensible (`source.received`, `approval.requested`, etc.).
+- **Approval gates** (`approval request/decide`) para tareas sensibles.
+- **Policy registry** (`policy set/list`) para reglas de operación y seguridad.
+
+Estos tres bloques permiten construir una transición ordenada hacia:
+- API-first + WebSockets + workers asíncronos.
+- Human-in-the-loop y auditoría por línea de tiempo.
+- Gobernanza por políticas antes de ampliar módulos OSINT/pentesting.

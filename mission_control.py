@@ -89,6 +89,43 @@ def ensure_db(db_path: Path):
         )
         """
     )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS events (
+            id TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            source TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            trace_id TEXT NOT NULL,
+            created_ts INTEGER NOT NULL
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS approvals (
+            id TEXT PRIMARY KEY,
+            action TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            risk_level TEXT NOT NULL,
+            status TEXT NOT NULL,
+            requested_by TEXT NOT NULL,
+            decided_by TEXT NOT NULL,
+            decision_note TEXT NOT NULL,
+            created_ts INTEGER NOT NULL,
+            decided_ts INTEGER NOT NULL
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS policies (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_ts INTEGER NOT NULL
+        )
+        """
+    )
     conn.commit()
     return conn
 
@@ -389,6 +426,73 @@ def parse_target(target: str):
     raise ValueError("target must be 'global' or 'agent:<agent_id>'")
 
 
+def emit_event(db_path: Path, event_type: str, source: str, payload: dict, trace_id: str = ''):
+    conn = ensure_db(db_path)
+    event_id = str(uuid.uuid4())
+    resolved_trace = trace_id or str(uuid.uuid4())
+    conn.execute(
+        """
+        INSERT INTO events (id, event_type, source, payload_json, trace_id, created_ts)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (event_id, event_type, source, json.dumps(payload, ensure_ascii=False), resolved_trace, int(time.time())),
+    )
+    conn.commit()
+    conn.close()
+    return {'id': event_id, 'event_type': event_type, 'source': source, 'trace_id': resolved_trace}
+
+
+def request_approval(db_path: Path, action: str, scope_id: str, risk_level: str, requested_by: str):
+    conn = ensure_db(db_path)
+    approval_id = str(uuid.uuid4())
+    conn.execute(
+        """
+        INSERT INTO approvals (id, action, scope_id, risk_level, status, requested_by, decided_by, decision_note, created_ts, decided_ts)
+        VALUES (?, ?, ?, ?, 'pending', ?, '', '', ?, 0)
+        """,
+        (approval_id, action, scope_id, risk_level, requested_by, int(time.time())),
+    )
+    conn.commit()
+    conn.close()
+    return {'id': approval_id, 'status': 'pending'}
+
+
+def decide_approval(db_path: Path, approval_id: str, decision: str, decided_by: str, note: str):
+    if decision not in {'approved', 'rejected'}:
+        raise ValueError("decision must be 'approved' or 'rejected'")
+    conn = ensure_db(db_path)
+    cur = conn.cursor()
+    existing = cur.execute('SELECT id, status FROM approvals WHERE id = ?', (approval_id,)).fetchone()
+    if not existing:
+        conn.close()
+        raise ValueError(f'approval not found: {approval_id}')
+    cur.execute(
+        'UPDATE approvals SET status = ?, decided_by = ?, decision_note = ?, decided_ts = ? WHERE id = ?',
+        (decision, decided_by, note, int(time.time()), approval_id),
+    )
+    conn.commit()
+    conn.close()
+    return {'id': approval_id, 'status': decision}
+
+
+def set_policy(db_path: Path, key: str, value: str):
+    conn = ensure_db(db_path)
+    conn.execute(
+        'INSERT OR REPLACE INTO policies (key, value, updated_ts) VALUES (?, ?, ?)',
+        (key, value, int(time.time())),
+    )
+    conn.commit()
+    conn.close()
+    return {'key': key, 'value': value}
+
+
+def list_policies(db_path: Path):
+    conn = ensure_db(db_path)
+    rows = conn.execute('SELECT key, value, updated_ts FROM policies ORDER BY key').fetchall()
+    conn.close()
+    return [{'key': x[0], 'value': x[1], 'updated_ts': x[2]} for x in rows]
+
+
 def run_debug_checks(bridge: Path, db: Path, config: Path):
     checks = []
 
@@ -417,6 +521,12 @@ def run_debug_checks(bridge: Path, db: Path, config: Path):
     cli = detect_cli_agents()
     checks.append({'check': 'cli_agents', 'ok': True, 'details': cli})
     checks.append({'check': 'catalog_items', 'ok': True, 'count': len(load_catalog())})
+    conn = ensure_db(db)
+    pending_approvals = conn.execute("SELECT COUNT(*) FROM approvals WHERE status = 'pending'").fetchone()[0]
+    policy_count = conn.execute("SELECT COUNT(*) FROM policies").fetchone()[0]
+    conn.close()
+    checks.append({'check': 'pending_approvals', 'ok': True, 'count': pending_approvals})
+    checks.append({'check': 'policy_registry', 'ok': policy_count > 0, 'count': policy_count})
 
     recommendations = []
     if not any(v.get('installed') for v in cli.values()):
@@ -426,6 +536,8 @@ def run_debug_checks(bridge: Path, db: Path, config: Path):
     if not model_discovery['lm_studio']['ok']:
         recommendations.append('LM Studio endpoint not reachable at http://127.0.0.1:1234/v1/models')
     recommendations.append('Use catalog list/install to manage Skill vs Plugin vs MCP separately.')
+    if policy_count == 0:
+        recommendations.append('Define baseline policies (e.g. approval_required.security=true, osint_mode=passive)')
     if not recommendations:
         recommendations.append('Core local checks passed. Next step: connect real-time WS + whiteboard persistence.')
 
@@ -507,6 +619,34 @@ def main():
     p_agent_cfg.add_argument('--agent-id', required=True)
     p_agent_cfg.add_argument('--key', required=True)
     p_agent_cfg.add_argument('--value', required=True)
+
+    p_event = sub.add_parser('event', help='Operational event log')
+    event_sub = p_event.add_subparsers(dest='event_cmd', required=True)
+    p_event_emit = event_sub.add_parser('emit', help='Emit normalized event')
+    p_event_emit.add_argument('--type', required=True, help='e.g. source.received, approval.requested')
+    p_event_emit.add_argument('--source', required=True, help='module or connector name')
+    p_event_emit.add_argument('--body-json', default='{}', help='JSON payload string')
+    p_event_emit.add_argument('--trace-id', default='')
+
+    p_approval = sub.add_parser('approval', help='Human-in-the-loop approvals')
+    approval_sub = p_approval.add_subparsers(dest='approval_cmd', required=True)
+    p_approval_req = approval_sub.add_parser('request', help='Create approval request')
+    p_approval_req.add_argument('--action', required=True)
+    p_approval_req.add_argument('--scope', required=True)
+    p_approval_req.add_argument('--risk', default='medium', choices=['low', 'medium', 'high', 'critical'])
+    p_approval_req.add_argument('--by', default='system')
+    p_approval_decide = approval_sub.add_parser('decide', help='Approve/reject request')
+    p_approval_decide.add_argument('--id', required=True)
+    p_approval_decide.add_argument('--decision', required=True, choices=['approved', 'rejected'])
+    p_approval_decide.add_argument('--by', default='operator')
+    p_approval_decide.add_argument('--note', default='')
+
+    p_policy = sub.add_parser('policy', help='Policy registry (RBAC/ABAC/scopes)')
+    policy_sub = p_policy.add_subparsers(dest='policy_cmd', required=True)
+    p_policy_set = policy_sub.add_parser('set', help='Set policy key/value')
+    p_policy_set.add_argument('--key', required=True)
+    p_policy_set.add_argument('--value', required=True)
+    policy_sub.add_parser('list', help='List policy registry')
 
     args = ap.parse_args()
     bridge = Path(args.bridge)
@@ -611,6 +751,38 @@ def main():
     if args.cmd == 'agent' and args.agent_cmd == 'config-set':
         result = set_agent_config(db, args.agent_id, args.key, args.value)
         print(json.dumps({'updated': result}, indent=2))
+        return
+
+    if args.cmd == 'event' and args.event_cmd == 'emit':
+        payload = json.loads(args.body_json)
+        result = emit_event(db, args.type, args.source, payload, args.trace_id)
+        print(json.dumps({'event': result}, indent=2))
+        return
+
+    if args.cmd == 'approval' and args.approval_cmd == 'request':
+        result = request_approval(db, args.action, args.scope, args.risk, args.by)
+        emit_event(
+            db,
+            'approval.requested',
+            'approval',
+            {'approval_id': result['id'], 'action': args.action, 'scope': args.scope, 'risk': args.risk},
+        )
+        print(json.dumps({'approval': result}, indent=2))
+        return
+
+    if args.cmd == 'approval' and args.approval_cmd == 'decide':
+        result = decide_approval(db, args.id, args.decision, args.by, args.note)
+        emit_event(db, f"approval.{args.decision}", 'approval', {'approval_id': args.id, 'note': args.note})
+        print(json.dumps({'approval': result}, indent=2))
+        return
+
+    if args.cmd == 'policy' and args.policy_cmd == 'set':
+        result = set_policy(db, args.key, args.value)
+        print(json.dumps({'policy': result}, indent=2))
+        return
+
+    if args.cmd == 'policy' and args.policy_cmd == 'list':
+        print(json.dumps({'items': list_policies(db)}, indent=2))
         return
 
     if args.cmd == 'status':
