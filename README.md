@@ -42,16 +42,9 @@ Al ejecutar `config` o `start`, se inicializa `~/.agentforge/config.toml` (o `$A
 
 ## Estado de implementación por módulo
 
-- ✅ Mission Control Hub (UI scaffold + métricas mock)
-- ✅ Agent Registry (detección CLI + Ollama/LM Studio)
-- ✅ Whiteboard (panel siempre visible, feed inicial)
-- ✅ Team Builder (creación de equipos en SQLite)
-- 🟡 Termux Bridge (pairing checklist inicial)
-- ✅ MCP Loader (lee `mcp_sources` desde TOML)
-- ✅ Catálogo unificado (Agent vs Skill vs Plugin vs MCP, con instalación y scope)
-- ⏳ Social Bridge / Cloud & Containers / CyberStrike (pendiente)
+Por defecto usa `CLI_BRIDGE_HOME` si existe. Si no existe, usa:
 
-## Notas
+`~/.mission-control/cli-bridge`
 
 Este commit prioriza la **base MVP operativa** y la estructura de comandos para iterar rápido hacia v0.2+.
 

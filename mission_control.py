@@ -16,12 +16,7 @@ from urllib.request import urlopen
 import tomllib
 
 HOME = Path.home()
-APP_HOME = Path(os.environ.get('AGENTFORGE_HOME', str(HOME / '.agentforge')))
-DEFAULT_BRIDGE = Path(os.environ.get('CLI_BRIDGE_HOME', str(APP_HOME / 'bridge')))
-DEFAULT_DB = APP_HOME / 'mission_control.db'
-DEFAULT_CONFIG = APP_HOME / 'config.toml'
-WEB_ROOT = Path(__file__).parent / 'web'
-CATALOG_PATH = Path(__file__).parent / 'data' / 'agent_catalog.json'
+DEFAULT_BRIDGE = Path(os.environ.get('CLI_BRIDGE_HOME', str(HOME / '.mission-control' / 'cli-bridge')))
 
 AGENTS = {
     'codex': ['codex'],
@@ -564,25 +559,8 @@ def main():
     p_install.add_argument('agent', choices=['codex', 'gemini', 'qwen', 'all'])
 
     p_dispatch = sub.add_parser('dispatch', help='Send instruction to one/all agents')
-    p_dispatch.add_argument('to', choices=['codex', 'gemini', 'qwen', 'all'])
-    p_dispatch.add_argument('body')
-
-    p_mission = sub.add_parser('mission', help='Mission operations')
-    mission_sub = p_mission.add_subparsers(dest='mission_cmd', required=True)
-    p_mission_new = mission_sub.add_parser('new', help='Create a new mission')
-    p_mission_new.add_argument('--name', required=True)
-    p_mission_new.add_argument('--objective', required=True)
-
-    p_team = sub.add_parser('team', help='Team operations')
-    team_sub = p_team.add_subparsers(dest='team_cmd', required=True)
-    p_team_create = team_sub.add_parser('create', help='Create a squad/team')
-    p_team_create.add_argument('--name', required=True)
-    p_team_create.add_argument('--mission-id', default='')
-    p_team_create.add_argument('--members', nargs='*', default=[])
-
-    p_termux = sub.add_parser('termux', help='Termux bridge helpers')
-    termux_sub = p_termux.add_subparsers(dest='termux_cmd', required=True)
-    termux_sub.add_parser('pair', help='Print pairing checklist for Android + Cloudflare Tunnel')
+    p_dispatch.add_argument('to', choices=['codex', 'gemini', 'qwen', 'all'], help='codex|gemini|qwen|all')
+    p_dispatch.add_argument('body', help='Instruction text')
 
     p_mcp = sub.add_parser('mcp', help='MCP loader operations')
     mcp_sub = p_mcp.add_subparsers(dest='mcp_cmd', required=True)
