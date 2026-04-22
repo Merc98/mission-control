@@ -1,0 +1,110 @@
+[
+  {
+    "id": "agent0",
+    "name": "Agent0",
+    "kind": "agent",
+    "category": "general",
+    "source_type": "github",
+    "source": "https://github.com/aiming-lab/Agent0",
+    "tags": ["autonomous", "research"]
+  },
+  {
+    "id": "decepticon",
+    "name": "Decepticon",
+    "kind": "agent",
+    "category": "security_offensive",
+    "source_type": "github",
+    "source": "https://github.com/PurpleAILAB/Decepticon",
+    "tags": ["security", "offensive"]
+  },
+  {
+    "id": "autoagent",
+    "name": "AutoAgent",
+    "kind": "agent",
+    "category": "general",
+    "source_type": "github",
+    "source": "https://github.com/HKUDS/AutoAgent",
+    "tags": ["automation", "multi-agent"]
+  },
+  {
+    "id": "mercury-agent",
+    "name": "Mercury Agent",
+    "kind": "agent",
+    "category": "general",
+    "source_type": "github",
+    "source": "https://github.com/cosmicstack-labs/mercury-agent",
+    "tags": ["assistant", "agent-runtime"]
+  },
+  {
+    "id": "eva",
+    "name": "EVA",
+    "kind": "agent",
+    "category": "osint",
+    "source_type": "github",
+    "source": "https://github.com/ARCANGEL0/EVA",
+    "tags": ["osint", "investigation"]
+  },
+  {
+    "id": "agent-zero",
+    "name": "Agent Zero",
+    "kind": "agent",
+    "category": "general",
+    "source_type": "github",
+    "source": "https://github.com/agent0ai/agent-zero",
+    "tags": ["general-purpose", "automation"]
+  },
+  {
+    "id": "osint-toolkit",
+    "name": "OSINT Toolkit Profile",
+    "kind": "skill",
+    "category": "osint",
+    "source_type": "builtin",
+    "source": "builtin://skills/osint-toolkit",
+    "tags": ["search", "triage", "attribution"]
+  },
+  {
+    "id": "forensics-triage",
+    "name": "Forensics Triage Profile",
+    "kind": "skill",
+    "category": "forensics",
+    "source_type": "builtin",
+    "source": "builtin://skills/forensics-triage",
+    "tags": ["timeline", "artifacts", "ioc"]
+  },
+  {
+    "id": "reverse-workbench",
+    "name": "Reverse Engineering Workbench",
+    "kind": "plugin",
+    "category": "reverse_engineering",
+    "source_type": "builtin",
+    "source": "builtin://plugins/reverse-workbench",
+    "tags": ["ghidra", "radare2", "binary-analysis"]
+  },
+  {
+    "id": "business-analyst",
+    "name": "Business Analyst Pack",
+    "kind": "skill",
+    "category": "business",
+    "source_type": "builtin",
+    "source": "builtin://skills/business-analyst",
+    "tags": ["kpi", "finance", "forecast"]
+  },
+  {
+    "id": "marketing-ops",
+    "name": "Marketing Ops Pack",
+    "kind": "skill",
+    "category": "marketing",
+    "source_type": "builtin",
+    "source": "builtin://skills/marketing-ops",
+    "tags": ["campaigns", "social", "content"]
+  },
+  {
+    "id": "mcp-sec-feeds",
+    "name": "Security Feeds MCP",
+    "kind": "mcp",
+    "category": "security_defensive",
+    "source_type": "builtin",
+    "source": "builtin://mcp/security-feeds",
+    "tags": ["threat-intel", "feeds", "ioc-enrichment"]
+  }
+]

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentForge Mission Control</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin:0; font-family: Inter, Segoe UI, sans-serif; background:#0c0f1a; color:#d8defa; }
+    .layout { display:grid; grid-template-columns:72px 1fr 340px; min-height:100vh; }
+    .sidebar { border-right:1px solid #1d2442; padding:12px 8px; display:flex; flex-direction:column; gap:10px; }
+    .icon { background:#121933; border:1px solid #27315e; border-radius:10px; height:46px; display:grid; place-items:center; color:#8fb2ff; }
+    .main { padding:18px; }
+    .panel { background:#111731; border:1px solid #27315e; border-radius:14px; padding:14px; margin-bottom:14px; }
+    .cards { display:grid; grid-template-columns:repeat(4,minmax(120px,1fr)); gap:10px; }
+    .metric { background:#0f1530; border:1px solid #222e5d; border-radius:12px; padding:12px; }
+    .bar { height:8px; border-radius:999px; background:#1d2442; overflow:hidden; }
+    .bar > span { display:block; height:100%; background:#5f8dff; }
+    .right { border-left:1px solid #1d2442; padding:14px; display:flex; flex-direction:column; }
+    .whiteboard { flex:1; overflow:auto; background:#111731; border:1px solid #27315e; border-radius:14px; padding:12px; }
+    .msg { margin-bottom:8px; padding:8px; border-radius:8px; background:#0f1530; border:1px solid #202a58; }
+    input { width:100%; padding:10px; border-radius:10px; border:1px solid #2a3468; background:#0f1530; color:#d8defa; margin-top:10px; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="icon">🏠</div>
+      <div class="icon">🤖</div>
+      <div class="icon">🧭</div>
+      <div class="icon">🔌</div>
+      <div class="icon">☁️</div>
+    </aside>
+    <main class="main">
+      <section class="panel">
+        <h2>Mission Control Hub</h2>
+        <div class="cards">
+          <div class="metric"><strong>Agents activos</strong><div>3</div></div>
+          <div class="metric"><strong>Tareas en curso</strong><div>7</div></div>
+          <div class="metric"><strong>Tokens</strong><div>128k</div></div>
+          <div class="metric"><strong>Uptime</strong><div>02:41:09</div></div>
+        </div>
+      </section>
+      <section class="panel">
+        <h3>Misiones activas</h3>
+        <p>MVP Bootstrapping <small>(64%)</small></p>
+        <div class="bar"><span style="width:64%"></span></div>
+      </section>
+    </main>
+    <aside class="right">
+      <h3>Whiteboard</h3>
+      <div class="whiteboard">
+        <div class="msg"><strong>orchestrator → qwen:</strong> valida esquema MCP.</div>
+        <div class="msg"><strong>qwen → orchestrator:</strong> esquema OK, listo para deploy.</div>
+        <div class="msg"><strong>gemini → all:</strong> contexto 18%, sugiero handoff.</div>
+      </div>
+      <input placeholder="Enviar instrucción a agente activo..." />
+    </aside>
+  </div>
+</body>
+</html>
