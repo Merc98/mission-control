@@ -1,47 +1,45 @@
-# Mission Control CLI
+# AgentForge Mission Control (Blueprint MVP scaffold)
 
-CLI coordinador multiagente para `codex`, `gemini`, `qwen`.
+Este repositorio ahora implementa un **scaffold funcional** alineado con el blueprint de AgentForge Mission Control:
 
-## Instalación
+- CLI principal `agentforge` (archivo `mission_control.py`)
+- Dashboard web local (archivo `web/index.html`)
+- Persistencia local en SQLite para misiones/equipos
+- Descubrimiento de modelos en Ollama y LM Studio
+- Bridge de mensajes entre agentes (inbox/outbox/state)
 
-```powershell
-cd "C:\Users\beloc\CLI Workspace\nfc\mission-control-cli"
-python .\mission_control.py discover
+## Comandos clave
+
+```bash
+python mission_control.py start
+python mission_control.py agents list
+python mission_control.py mission new --name "MVP" --objective "Levantar hub"
+python mission_control.py team create --name "alpha" --members orchestrator specialist validator
+python mission_control.py termux pair
+python mission_control.py mcp load
+python mission_control.py config
 ```
 
-Opcional instalar CLIs:
+## Estructura
 
-```powershell
-python .\mission_control.py install all
-```
+- `mission_control.py`: CLI + orchestration local + discovery + SQLite
+- `web/index.html`: UI local estilo Mission Control (navy background, sidebar, whiteboard fijo)
+- `mission-control.ps1`: wrapper para PowerShell
 
-## Uso rápido
+## Configuración local
 
-```powershell
-python .\mission_control.py discover
-python .\mission_control.py status
-python .\mission_control.py dispatch all "Objetivo: compilar APK, instalar, validar funciones"
-python .\mission_control.py cancel
-```
+Al ejecutar `config` o `start`, se inicializa `~/.agentforge/config.toml` (o `$AGENTFORGE_HOME/config.toml`) con token local.
 
-## Bridge
+## Estado de implementación por módulo
 
-Por defecto usa:
+- ✅ Mission Control Hub (UI scaffold + métricas mock)
+- ✅ Agent Registry (detección CLI + Ollama/LM Studio)
+- ✅ Whiteboard (panel siempre visible, feed inicial)
+- ✅ Team Builder (creación de equipos en SQLite)
+- 🟡 Termux Bridge (pairing checklist inicial)
+- 🟡 MCP Loader (carga base vía config, parsing avanzado pendiente)
+- ⏳ Social Bridge / Cloud & Containers / CyberStrike (pendiente)
 
-`C:\Users\beloc\CLI Workspace\nfc\cli-bridge`
+## Notas
 
-Puedes cambiarlo:
-
-```powershell
-python .\mission_control.py --bridge "D:\otro\bridge" status
-```
-
-## Procedimiento operativo en GitHub
-
-1. Clonar repo
-2. Ejecutar `discover`
-3. Ejecutar `install all` si falta algún CLI
-4. Lanzar agentes en terminales separadas
-5. Usar `dispatch all` para instrucciones
-6. Monitorear con `status`
-7. Cancelar con `cancel` cuando necesites
+Este commit prioriza la **base MVP operativa** y la estructura de comandos para iterar rápido hacia v0.2+.
