@@ -18,6 +18,7 @@ python mission_control.py team create --name "alpha" --members orchestrator spec
 python mission_control.py termux pair
 python mission_control.py mcp load
 python mission_control.py config
+python mission_control.py debug
 ```
 
 ## Estructura
@@ -37,9 +38,19 @@ Al ejecutar `config` o `start`, se inicializa `~/.agentforge/config.toml` (o `$A
 - ✅ Whiteboard (panel siempre visible, feed inicial)
 - ✅ Team Builder (creación de equipos en SQLite)
 - 🟡 Termux Bridge (pairing checklist inicial)
-- 🟡 MCP Loader (carga base vía config, parsing avanzado pendiente)
+- ✅ MCP Loader (lee `mcp_sources` desde TOML)
 - ⏳ Social Bridge / Cloud & Containers / CyberStrike (pendiente)
 
 ## Notas
 
 Este commit prioriza la **base MVP operativa** y la estructura de comandos para iterar rápido hacia v0.2+.
+
+## Debug recomendado
+
+Para validar que todo esté fluido localmente:
+
+```bash
+python mission_control.py debug
+```
+
+El comando revisa carpetas bridge, SQLite, config TOML, discovery de endpoints locales y presencia de CLIs, y luego devuelve recomendaciones accionables.

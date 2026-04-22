@@ -13,6 +13,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
+import tomllib
 
 HOME = Path.home()
 APP_HOME = Path(os.environ.get('AGENTFORGE_HOME', str(HOME / '.agentforge')))
@@ -64,7 +65,7 @@ def ensure_db(db_path: Path):
     return conn
 
 
-def ensure_config(path: Path):
+def ensure_config(path: Path, bridge_path: Path):
     if path.exists():
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,7 +73,7 @@ def ensure_config(path: Path):
     body = (
         '# AgentForge local configuration\n'
         f'auth_token = "{token}"\n'
-        f'bridge_path = "{DEFAULT_BRIDGE}"\n'
+        f'bridge_path = "{bridge_path}"\n'
         'mcp_sources = []\n'
     )
     path.write_text(body, encoding='utf-8')
@@ -176,6 +177,8 @@ def launch_ui(host: str, port: int, open_browser: bool):
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        server.server_close()
 
 
 def create_mission(db_path: Path, name: str, objective: str):
@@ -218,10 +221,66 @@ def status(bridge: Path):
     return data
 
 
+def load_mcp_sources(config_path: Path):
+    raw = config_path.read_text(encoding='utf-8')
+    parsed = tomllib.loads(raw)
+    sources = parsed.get('mcp_sources', [])
+    if not isinstance(sources, list):
+        raise ValueError('mcp_sources must be a TOML array')
+    normalized = []
+    for i, src in enumerate(sources):
+        if not isinstance(src, str):
+            raise ValueError(f'mcp_sources[{i}] must be a string')
+        normalized.append(src)
+    return normalized
+
+
+def run_debug_checks(bridge: Path, db: Path, config: Path):
+    checks = []
+
+    try:
+        ensure_app_dirs(bridge)
+        checks.append({'check': 'bridge_dirs', 'ok': True, 'path': str(bridge)})
+    except Exception as exc:
+        checks.append({'check': 'bridge_dirs', 'ok': False, 'error': str(exc)})
+
+    try:
+        conn = ensure_db(db)
+        conn.close()
+        checks.append({'check': 'sqlite_ready', 'ok': True, 'path': str(db)})
+    except Exception as exc:
+        checks.append({'check': 'sqlite_ready', 'ok': False, 'error': str(exc)})
+
+    try:
+        ensure_config(config, bridge)
+        checks.append({'check': 'config_ready', 'ok': True, 'path': str(config)})
+    except Exception as exc:
+        checks.append({'check': 'config_ready', 'ok': False, 'error': str(exc)})
+
+    model_discovery = discover_model_endpoints()
+    checks.append({'check': 'model_endpoints', 'ok': True, 'details': model_discovery})
+
+    cli = detect_cli_agents()
+    checks.append({'check': 'cli_agents', 'ok': True, 'details': cli})
+
+    recommendations = []
+    if not any(v.get('installed') for v in cli.values()):
+        recommendations.append('No CLI agents found in PATH. Run: agentforge install all')
+    if not model_discovery['ollama']['ok']:
+        recommendations.append('Ollama endpoint not reachable at http://127.0.0.1:11434/api/tags')
+    if not model_discovery['lm_studio']['ok']:
+        recommendations.append('LM Studio endpoint not reachable at http://127.0.0.1:1234/v1/models')
+    if not recommendations:
+        recommendations.append('Core local checks passed. Next step: connect real-time WS + whiteboard persistence.')
+
+    return {'checks': checks, 'recommendations': recommendations}
+
+
 def main():
     ap = argparse.ArgumentParser(prog='agentforge', description='AgentForge Mission Control CLI')
     ap.add_argument('--bridge', default=str(DEFAULT_BRIDGE), help='Bridge folder path')
     ap.add_argument('--db', default=str(DEFAULT_DB), help='SQLite DB path')
+    ap.add_argument('--config', default=str(DEFAULT_CONFIG), help='Config TOML path')
     sub = ap.add_subparsers(dest='cmd', required=True)
 
     p_start = sub.add_parser('start', help='Start local dashboard server')
@@ -260,10 +319,10 @@ def main():
     p_mcp = sub.add_parser('mcp', help='MCP loader operations')
     mcp_sub = p_mcp.add_subparsers(dest='mcp_cmd', required=True)
     p_mcp_load = mcp_sub.add_parser('load', help='Load MCP sources from config.toml')
-    p_mcp_load.add_argument('--config', default=str(DEFAULT_CONFIG))
+    p_mcp_load.add_argument('--config', default=None)
 
-    p_config = sub.add_parser('config', help='Initialize/show local config')
-    p_config.add_argument('--path', default=str(DEFAULT_CONFIG))
+    sub.add_parser('config', help='Initialize/show local config')
+    sub.add_parser('debug', help='Run local diagnostics and recommendations')
 
     sub.add_parser('status', help='Show bridge summary')
 
@@ -273,9 +332,10 @@ def main():
     args = ap.parse_args()
     bridge = Path(args.bridge)
     db = Path(args.db)
+    config = Path(args.config) if args.config is not None else DEFAULT_CONFIG
 
     if args.cmd == 'start':
-        ensure_config(DEFAULT_CONFIG)
+        ensure_config(config, bridge)
         launch_ui(args.host, args.port, not args.no_open)
         return
 
@@ -321,14 +381,19 @@ def main():
         return
 
     if args.cmd == 'mcp' and args.mcp_cmd == 'load':
-        cfg = Path(args.config)
-        ensure_config(cfg)
-        print(json.dumps({'config': str(cfg), 'status': 'loaded_stub', 'note': 'TOML parsing wired for next iteration'}, indent=2))
+        cfg = Path(args.config) if args.config is not None else config
+        ensure_config(cfg, bridge)
+        sources = load_mcp_sources(cfg)
+        print(json.dumps({'config': str(cfg), 'status': 'loaded', 'sources': sources}, indent=2))
         return
 
     if args.cmd == 'config':
-        cfg = ensure_config(Path(args.path))
+        cfg = ensure_config(config, bridge)
         print(json.dumps({'config': str(cfg), 'exists': cfg.exists()}, indent=2))
+        return
+
+    if args.cmd == 'debug':
+        print(json.dumps(run_debug_checks(bridge, db, config), indent=2))
         return
 
     if args.cmd == 'status':
